@@ -1,20 +1,20 @@
-
-# Python
+﻿# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.env
-.venv
-venv/
-build/
-dist/
-*.egg-info/
+.pytest_cache/
 
-# IDE
+# Envs & tools
+.venv/
+env/
+venv/
+
+# Index / cache
+.hindex/
+dist/
+build/
+
+# Editors
 .vscode/
 .idea/
-
-# OS
-.DS_Store
-Thumbs.db
