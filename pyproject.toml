@@ -28,4 +28,5 @@ hindex = "hindex.cli:main"
 
 [tool.hindex]
 dim = 768
-file_globs = ["**/*.py"]
+file_globs = ["src/**/*.py", "tests/**/*.py"]
+

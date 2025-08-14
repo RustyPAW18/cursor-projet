@@ -32,3 +32,8 @@
 
 
 
+## 1.2.0 — 2025-08-14
+### Ajouts
+- Index hybride minimal (FAISS + hashing)
+- CLI `hindex` : `ingest` / `query`
+- Test fumée `tests/test_hindex_smoke.py`

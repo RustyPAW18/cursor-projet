@@ -40,3 +40,10 @@ Ce pack crée une base **saine et minimale** pour nos sessions de code avec le s
 - **Stop rules** : au-delà de 4–5 correctifs → **reset propre** dans un nouveau chat.
 
 Voir `docs/squelette.md` pour la version complète.
+## Index hybride minimal (v1.2)
+- FAISS + embedding hashing déterministe (offline)
+- Segmentation symboles via tree-sitter (fallback safe si indispo)
+- CLI :
+  - Ingestion : `hindex ingest --project . --out .hindex`
+  - Requête  : `hindex query --index .hindex --q "..." --k 5`
+- Config : `[tool.hindex]` dans `pyproject.toml` (dim, globs)
