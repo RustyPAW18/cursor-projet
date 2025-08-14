@@ -37,3 +37,8 @@
 - Index hybride minimal (FAISS + hashing)
 - CLI `hindex` : `ingest` / `query`
 - Test fumée `tests/test_hindex_smoke.py`
+## 1.2.1 — 2025-08-14
+### Change
+- Segmentation Python passée de tree-sitter → **`ast` standard** (Py3.13 OK).
+- Offsets byte précis pour preview/FAISS; fallback “module” conservé.
+- Zéro dépendance supplémentaire.
