@@ -47,3 +47,18 @@ Voir `docs/squelette.md` pour la version complète.
   - Ingestion : `hindex ingest --project . --out .hindex`
   - Requête  : `hindex query --index .hindex --q "..." --k 5`
 - Config : `[tool.hindex]` dans `pyproject.toml` (dim, globs)
+
+
+## 🚀 Runner unique (multiplateforme)
+
+Au lieu d'utiliser des scripts `*.ps1` / `*.bat`, utilisez désormais :
+
+```bash
+python run.py doctor   # affiche les chemins d'outils & PYTHONPATH
+python run.py lint     # ruff check src tests
+python run.py format   # black src tests
+python run.py test     # pytest
+python run.py all      # lint → format → test
+```
+
+> Le script détecte automatiquement le `.venv` (Windows / Linux / macOS) et force `PYTHONPATH=src` pour le layout source.

@@ -30,3 +30,37 @@ hindex = "hindex.cli:main"
 dim = 768
 file_globs = ["src/**/*.py", "tests/**/*.py"]
 exclude_globs = [".venv/**", "**/.venv/**", "**/.git/**", "**/.hindex/**", "dist/**", "build/**", "**/site-packages/**"]
+[tool.isort]
+profile = "black"
+line_length = 100
+src_paths = ["src", "tests"]
+
+
+[tool.poetry]
+name = "cursor"
+version = "0.1.0"
+description = "Base de dev Python propre + CI"
+authors = ["toi <you@example.com>"]
+packages = [{ include = "cursor_personal", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.5.0"
+black = "^24.0"
+pytest = "^8.0"
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+select = ["E","F","I","B","UP"]
+ignore = ["E203","E501"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "-q"

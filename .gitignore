@@ -18,3 +18,16 @@ build/
 # Editors
 .vscode/
 .idea/
+
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+*.log
+*.egg-info/
+# Byte-compiled / optimized / DLL files
+*.py[cod]
+*$py.class
+# Virtual environments
+# Distribution / packaging
+# OS files
+# Tools

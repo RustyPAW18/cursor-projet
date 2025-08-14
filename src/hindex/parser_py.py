@@ -1,45 +1,87 @@
-﻿from __future__ import annotations
+﻿# parser_py.py — fallback robuste sans tree-sitter
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, Union, List
+import re
 
+# ----------------------
+# Modèle attendu par indexer.py
+# ----------------------
 @dataclass
 class Symbol:
     file: Path
-    kind: str  # "function" | "class" | "module"
+    kind: str            # "module" | "class" | "function"
     name: str
     start_byte: int
     end_byte: int
-    preview: str
+    preview: str         # <- requis par indexer.py
 
-def _fallback_chunks(file: Path) -> Iterable[Symbol]:
-    txt = file.read_text(encoding="utf-8", errors="ignore")
-    yield Symbol(file=file, kind="module", name=file.stem, start_byte=0, end_byte=len(txt.encode("utf-8")), preview=txt[:200])
+# Regex simples pour extraire class/def en fallback
+_CLASS_RE = re.compile(r'^\s*class\s+([A-Za-z_]\w*)\s*(\([^)]*\))?\s*:', re.MULTILINE)
+_DEF_RE   = re.compile(r'^\s*def\s+([A-Za-z_]\w*)\s*\(', re.MULTILINE)
 
-def extract_symbols(file: Path) -> List[Symbol]:
+def _line_at(txt: str, pos: int) -> str:
+    """Retourne la ligne (en-tête) contenant pos, tronquée proprement."""
+    start = txt.rfind("\n", 0, pos) + 1
+    end = txt.find("\n", pos)
+    if end == -1:
+        end = len(txt)
+    return txt[start:end].strip()
+
+def _iter_regex_symbols(txt: str, file: Path) -> Iterable[Symbol]:
+    # classes
+    for m in _CLASS_RE.finditer(txt):
+        name = m.group(1)
+        start = m.start()
+        # heuristique simple: préview = ligne d'en-tête
+        preview = _line_at(txt, start)
+        end = txt.find("\n", m.end())
+        if end == -1:
+            end = len(txt)
+        yield Symbol(file=file, kind="class", name=name,
+                     start_byte=start, end_byte=end, preview=preview)
+    # fonctions
+    for m in _DEF_RE.finditer(txt):
+        name = m.group(1)
+        start = m.start()
+        preview = _line_at(txt, start)
+        end = txt.find("\n", m.end())
+        if end == -1:
+            end = len(txt)
+        yield Symbol(file=file, kind="function", name=name,
+                     start_byte=start, end_byte=end, preview=preview)
+
+def _fallback_symbols(file_or_text: Union[Path, str]) -> List[Symbol]:
+    if isinstance(file_or_text, Path):
+        path = file_or_text
+        txt = path.read_text(encoding="utf-8", errors="ignore")
+        mod_name = path.stem
+    else:
+        txt = str(file_or_text)
+        path = Path("<memory>")
+        mod_name = "module"
+
+    syms: List[Symbol] = []
+    # Toujours un symbole "module" couvrant tout le texte,
+    # preview = début de fichier (200 chars) sur une seule ligne
+    module_preview = " ".join(txt[:200].split())
+    syms.append(Symbol(file=path, kind="module", name=mod_name,
+                       start_byte=0, end_byte=len(txt), preview=module_preview))
+    # + classes & defs détectées
+    syms.extend(_iter_regex_symbols(txt, path))
+    return syms
+
+def extract_symbols(file_or_text: Union[Path, str]) -> List[Symbol]:
+    """
+    Essaie tree_sitter si dispo ; sinon fallback regex.
+    Accepte Path OU str (texte). Retourne une liste de Symbol (avec preview).
+    """
     try:
-        from tree_sitter import Parser  # type: ignore
-        from tree_sitter_languages import get_language  # type: ignore
+        # Si tree_sitter est présent mais sans grammaire Python, on retombe au fallback.
+        from tree_sitter import Parser  # type: ignore  # noqa: F401
+        # TODO: brancher l'AST réel si/when grammaire Python dispo.
+        return _fallback_symbols(file_or_text)
     except Exception:
-        return list(_fallback_chunks(file))
-
-    lang = get_language("python")
-    parser = Parser(); parser.set_language(lang)
-    data = file.read_bytes()
-    tree = parser.parse(data); root = tree.root_node
-    out: List[Symbol] = []
-
-    def text_slice(n) -> str:
-        return data[n.start_byte:n.end_byte].decode("utf-8", errors="ignore")
-
-    def walk(node) -> None:
-        if node.type in ("function_definition", "class_definition"):
-            name_node = next((c for c in node.children if c.type == "identifier"), None)
-            name = data[name_node.start_byte:name_node.end_byte].decode("utf-8", errors="ignore") if name_node else "<anon>"
-            kind = "function" if node.type == "function_definition" else "class"
-            out.append(Symbol(file=file, kind=kind, name=name, start_byte=node.start_byte, end_byte=node.end_byte, preview=text_slice(node)[:200]))
-        for ch in node.children:
-            walk(ch)
-
-    walk(root)
-    return out or list(_fallback_chunks(file))
+        return _fallback_symbols(file_or_text)
