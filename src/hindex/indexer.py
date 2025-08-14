@@ -35,7 +35,14 @@ def _iter_files(project: Path, globs: Iterable[str]) -> Iterable[Path]:
     for g in globs:
         yield from project.glob(g)
 
-def build_index(project_path: str | Path, out_dir: str | Path, *, dim: int = 768, file_globs: Iterable[str] = ("**/*.py",)) -> Path:
+def build_index(
+    project_path: str | Path,
+    out_dir: str | Path,
+    *,
+    dim: int = 768,
+    file_globs: Iterable[str] = ("**/*.py",),
+    min_symbol_bytes: int = 0,
+) -> Path:
     project = Path(project_path).resolve()
     out = Path(out_dir).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -54,12 +61,27 @@ def build_index(project_path: str | Path, out_dir: str | Path, *, dim: int = 768
         for sym in symbols:
             try:
                 data = file.read_bytes()
-                snippet = data[sym.start_byte:sym.end_byte].decode("utf-8", errors="ignore")
+                snippet_bytes = data[sym.start_byte:sym.end_byte]
+                if min_symbol_bytes > 0 and len(snippet_bytes) < min_symbol_bytes:
+                    continue
+                snippet = snippet_bytes.decode("utf-8", errors="ignore")
             except Exception:
                 snippet = sym.preview
+                if min_symbol_bytes > 0 and len(snippet.encode("utf-8")) < min_symbol_bytes:
+                    continue
             vec = hashing_vectorize(snippet, dim=dim)
             vectors.append(vec)
-            meta_items.append(MetaItem(id=next_id, file=str(sym.file), kind=sym.kind, name=sym.name, start_byte=sym.start_byte, end_byte=sym.end_byte, preview=sym.preview))
+            meta_items.append(
+                MetaItem(
+                    id=next_id,
+                    file=str(sym.file),
+                    kind=sym.kind,
+                    name=sym.name,
+                    start_byte=sym.start_byte,
+                    end_byte=sym.end_byte,
+                    preview=sym.preview,
+                )
+            )
             next_id += 1
 
     xb = np.vstack(vectors).astype(np.float32) if vectors else np.zeros((0, dim), dtype=np.float32)
@@ -68,9 +90,6 @@ def build_index(project_path: str | Path, out_dir: str | Path, *, dim: int = 768
         index = faiss.IndexFlatIP(dim)
         if xb.shape[0] > 0:
             index.add(xb)
-        if xb.shape[0] == 0:
-            # FAISS cannot save empty? Keep consistent anyway.
-            pass
         faiss.write_index(index, str(out / "index.faiss"))
     else:
         # Fallback: store matrix for cosine search
@@ -118,5 +137,12 @@ def query_index(index_dir: str | Path, query: str, *, k: int = 5) -> List[Dict[s
         if idx < 0 or idx >= len(meta.items):
             continue
         it = meta.items[idx]
-        results.append({"score": f"{float(dist):.4f}", "file": it.file, "symbol": f"{it.kind} {it.name}", "preview": it.preview.replace("\n", " ")[:200]})
+        results.append(
+            {
+                "score": f"{float(dist):.4f}",
+                "file": it.file,
+                "symbol": f"{it.kind} {it.name}",
+                "preview": it.preview.replace("\n", " ")[:200],
+            }
+        )
     return results
