@@ -3,32 +3,36 @@ import argparse, json, sys
 from pathlib import Path
 from .indexer import build_index, query_index
 
-def _default_from_pyproject() -> tuple[int, list[str], list[str]]:
+def _default_from_pyproject() -> tuple[int, list[str], int]:
     dim = 768
     globs = ["**/*.py"]
-    excludes: list[str] = []
+    min_bytes = 0
     try:
         import tomllib
         data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
         cfg = data.get("tool", {}).get("hindex", {})
         dim = int(cfg.get("dim", dim))
         globs = list(cfg.get("file_globs", globs))
-        excludes = list(cfg.get("exclude_globs", excludes))
+        min_bytes = int(cfg.get("min_symbol_bytes", min_bytes))
     except Exception:
         pass
-    return dim, globs, excludes
+    return dim, globs, min_bytes
 
 def cmd_ingest(args: argparse.Namespace) -> int:
-    dim, globs, excludes = _default_from_pyproject()
+    dim, globs, min_bytes_cfg = _default_from_pyproject()
     if args.dim is not None:
         dim = int(args.dim)
     if args.file_glob:
         globs = args.file_glob
-    if args.exclude_glob:
-        excludes = (excludes or []) + args.exclude_glob
-    out = build_index(args.project, args.out, dim=dim, file_globs=globs, exclude_globs=excludes)
-    print(f"[hindex] index wr
-return 0
+    # auto --project src si présent (sauf --no-auto)
+    project = args.project
+    if (project is None or project == ".") and (not args.no_auto) and Path("src").exists():
+        project = "src"
+    min_symbol_bytes = args.min_symbol_bytes if args.min_symbol_bytes is not None else min_bytes_cfg
+
+    out = build_index(project, args.out, dim=dim, file_globs=globs, min_symbol_bytes=min_symbol_bytes)
+    print(f"[hindex] index written to: {out}")
+    return 0
 
 def cmd_query(args: argparse.Namespace) -> int:
     hits = query_index(args.index, args.q, k=args.k)
@@ -44,15 +48,19 @@ def cmd_query(args: argparse.Namespace) -> int:
     return 0
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="hindex", description="hybrid index (ast + FAISS, with numpy fallback)")
+    p = argparse.ArgumentParser(
+        prog="hindex",
+        description="hybrid index (tree-sitter/ast + FAISS, with numpy fallback)",
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
 
     p_ing = sub.add_parser("ingest", help="build index from project")
-    p_ing.add_argument("--project", type=str, default=".", help="project root path")
+    p_ing.add_argument("--project", type=str, default=".", help="project root path (auto 'src' if present)")
     p_ing.add_argument("--out", type=str, default=".hindex", help="output index directory")
     p_ing.add_argument("--dim", type=int, default=None, help="embedding dimension (override)")
     p_ing.add_argument("--file-glob", type=str, action="append", help="file glob(s)")
-    p_ing.add_argument("--exclude-glob", type=str, action="append", help="exclude glob(s)")
+    p_ing.add_argument("--min-symbol-bytes", type=int, default=None, help="drop symbols smaller than N bytes")
+    p_ing.add_argument("--no-auto", action="store_true", help="disable auto-detection of project=src")
     p_ing.set_defaults(func=cmd_ingest)
 
     p_q = sub.add_parser("query", help="query an existing index")
