@@ -30,3 +30,7 @@ hindex = "hindex.cli:main"
 dim = 768
 file_globs = ["src/**/*.py", "tests/**/*.py"]
 
+[tool.hindex]
+dim = 768
+file_globs = ["src/**/*.py", "tests/**/*.py"]
+exclude_globs = [".venv/**", "**/.venv/**", "**/.git/**", "**/.hindex/**", "dist/**", "build/**", "**/site-packages/**"]
