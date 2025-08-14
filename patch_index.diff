@@ -1,0 +1,513 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index 1111111..2222222 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -1,6 +1,22 @@
+ [project]
+ name = "cursor-perso"
+-version = "1.1.0"
++version = "1.2.0"
+ description = "Cursor perso — base stable"
+ authors = [{ name = "RustyPaws" }]
+ readme = "README.md"
+ requires-python = ">=3.10"
+ dependencies = [
+   "pytest>=7.4",
+   "ruff>=0.5.0",
+   "mypy>=1.8.0",
++  # --- Nouveau : index hybride minimal ---
++  "faiss-cpu>=1.8.0",
++  "tree-sitter>=0.21.3",
++  "tree-sitter-languages>=1.10.2",
++  "numpy>=1.26.0",
+ ]
++
++[project.scripts]
++hindex = "hindex.cli:main"
++
++[tool.hindex]
++dim = 768
++file_globs = ["**/*.py"]
+diff --git a/README.md b/README.md
+index 3333333..4444444 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,43 @@
+ # Cursor perso — Base
+ Baseline stable v1.1 (lint/tests/orchestrateurs OK).
+ 
++## Index hybride minimal (v1.2)
++Ce module ajoute un index de code **tree‑sitter + FAISS** avec une CLI.
++
++### Installer / MAJ deps
++```bash
++pip install -e .    # ou: pip install .
++```
++
++### Ingestion
++Construit un index FAISS et des métadonnées (JSON) à partir du code Python.
++```bash
++hindex ingest --project . --out .hindex
++```
++Options utiles :
++- `--dim 768` pour régler la dimension (défaut via `[tool.hindex]`).
++- `--file-glob "**/*.py"` pour cibler d’autres patterns.
++
++### Requêtes
++```bash
++hindex query --index .hindex --q "http client retry logic" --k 5
++```
++Affiche les meilleurs symboles (fichiers + prévisualisation).
++
++### Notes techniques
++- **tree-sitter** segmente les symboles (fonctions/classes).
++- Embedding **hashing** maison (dense, déterministe) → **FAISS** (cosine/IP).
++- Pas de réseau ni modèle externe requis.
++- Fallback gracieux sans tree-sitter : découpe basique par blocs.
++
++### Limites connues
++- Embedding hashing = baseline rapide (pas SOTA sémantique).
++- Python-only pour cette itération ; autres langages → TODO.
++
+ diff --git a/CHANGELOG.md b/CHANGELOG.md
+ index 5555555..6666666 100644
+ --- a/CHANGELOG.md
+ +++ b/CHANGELOG.md
+@@ -1,3 +1,15 @@
+ # CHANGELOG
++
++## 1.2.0 — 2025-08-14
++### Ajouts
++- Index hybride **tree-sitter + FAISS** minimal.
++- CLI : `hindex ingest` et `hindex query`.
++- Embedding hashing déterministe (offline) + normalisation cosine.
++- Tests rapides (smoke) `tests/test_hindex_smoke.py`.
++- Doc README mise à jour, config `[tool.hindex]` dans `pyproject.toml`.
++
++### Contraintes respectées
++- 1 patch unique, périmètre réduit, baseline immuable.
+ 
+ ## 1.1.0 — 2025-08-xx
+ - Baseline stable (lint/tests/orchestrateurs OK), création du CHANGELOG.
+diff --git a/src/hindex/__init__.py b/src/hindex/__init__.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/hindex/__init__.py
+@@ -0,0 +1,8 @@
++from __future__ import annotations
++
++__all__ = [
++    "build_index",
++    "query_index",
++]
++
++from .indexer import build_index, query_index
+diff --git a/src/hindex/embedding.py b/src/hindex/embedding.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/hindex/embedding.py
+@@ -0,0 +1,85 @@
++from __future__ import annotations
++
++import hashlib
++import re
++from typing import Iterable
++
++import numpy as np
++
++TOKEN_RE = re.compile(r"[A-Za-z_]\w+|\d+")
++
++
++def _tokens(text: str) -> Iterable[str]:
++    # Lowercased, simple word tokens; add light char-ngrams for robustness
++    tks = TOKEN_RE.findall(text.lower())
++    for t in tks:
++        yield t
++        if len(t) >= 4:
++            # add a couple of 3-grams to stabilize semantics cheaply
++            for i in range(len(t) - 2):
++                yield t[i : i + 3]
++
++
++def hashing_vectorize(text: str, dim: int = 768, seed: int = 0) -> np.ndarray:
++    """
++    Deterministic dense hashing embedding (no external model).
++    - Feature hashing into a fixed dim with signed counts
++    - L2-normalized for cosine/IP search in FAISS
++    """
++    rng_salt = seed.to_bytes(4, "little", signed=False)
++    vec = np.zeros(dim, dtype=np.float32)
++    for tok in _tokens(text):
++        h = hashlib.blake2b(tok.encode("utf-8"), digest_size=16, person=b"hindex", salt=rng_salt).digest()
++        idx = int.from_bytes(h[:8], "little") % dim
++        sign = 1.0 if (h[8] & 1) == 0 else -1.0
++        vec[idx] += sign
++    n = float(np.linalg.norm(vec))
++    if n > 0:
++        vec /= n
++    return vec
+diff --git a/src/hindex/parser_py.py b/src/hindex/parser_py.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/hindex/parser_py.py
+@@ -0,0 +1,123 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Iterable, List, Optional, Tuple
++
++
++@dataclass
++class Symbol:
++    file: Path
++    kind: str  # "function" | "class" | "module"
++    name: str
++    start_byte: int
++    end_byte: int
++    preview: str
++
++
++def _fallback_chunks(file: Path) -> Iterable[Symbol]:
++    txt = file.read_text(encoding="utf-8", errors="ignore")
++    yield Symbol(file=file, kind="module", name=file.stem, start_byte=0, end_byte=len(txt.encode("utf-8")), preview=txt[:200])
++
++
++def extract_symbols(file: Path) -> List[Symbol]:
++    """
++    Use tree-sitter (python) to extract function/class symbols; fallback to module chunk.
++    """
++    try:
++        from tree_sitter import Parser  # type: ignore
++        from tree_sitter_languages import get_language  # type: ignore
++    except Exception:
++        return list(_fallback_chunks(file))
++
++    lang = get_language("python")
++    parser = Parser()
++    parser.set_language(lang)
++
++    data = file.read_bytes()
++    tree = parser.parse(data)
++    root = tree.root_node
++    out: List[Symbol] = []
++
++    def text_slice(n) -> str:
++        return data[n.start_byte : n.end_byte].decode("utf-8", errors="ignore")
++
++    def walk(node) -> None:
++        # function_definition / class_definition in python grammar
++        if node.type in ("function_definition", "class_definition"):
++            # name is the first child identifier
++            name_node = None
++            for ch in node.children:
++                if ch.type == "identifier":
++                    name_node = ch
++                    break
++            name = data[name_node.start_byte : name_node.end_byte].decode("utf-8", errors="ignore") if name_node else "<anon>"
++            kind = "function" if node.type == "function_definition" else "class"
++            out.append(
++                Symbol(
++                    file=file,
++                    kind=kind,
++                    name=name,
++                    start_byte=node.start_byte,
++                    end_byte=node.end_byte,
++                    preview=text_slice(node)[:200],
++                )
++            )
++        for ch in node.children:
++            walk(ch)
++
++    walk(root)
++
++    if not out:
++        return list(_fallback_chunks(file))
++    return out
+diff --git a/src/hindex/indexer.py b/src/hindex/indexer.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/hindex/indexer.py
+@@ -0,0 +1,220 @@
++from __future__ import annotations
++
++import json
++from dataclasses import asdict, dataclass
++from pathlib import Path
++from typing import Dict, Iterable, List, Tuple
++
++import faiss  # type: ignore
++import numpy as np
++
++from .embedding import hashing_vectorize
++from .parser_py import Symbol, extract_symbols
++
++
++@dataclass
++class MetaItem:
++    id: int
++    file: str
++    kind: str
++    name: str
++    start_byte: int
++    end_byte: int
++    preview: str
++
++
++@dataclass
++class IndexMeta:
++    dim: int
++    items: List[MetaItem]
++    version: str = "1.0"
++
++
++def _iter_files(project: Path, globs: Iterable[str]) -> Iterable[Path]:
++    for g in globs:
++        yield from project.glob(g)
++
++
++def build_index(
++    project_path: str | Path,
++    out_dir: str | Path,
++    *,
++    dim: int = 768,
++    file_globs: Iterable[str] = ("**/*.py",),
++) -> Path:
++    """
++    Build a FAISS index from code symbols with hashing embeddings.
++    Returns the path to the index directory.
++    """
++    project = Path(project_path).resolve()
++    out = Path(out_dir).resolve()
++    out.mkdir(parents=True, exist_ok=True)
++
++    vectors: List[np.ndarray] = []
++    meta_items: List[MetaItem] = []
++    next_id = 0
++
++    for file in _iter_files(project, file_globs):
++        if not file.is_file():
++            continue
++        if file.suffix != ".py":
++            continue
++        try:
++            symbols = extract_symbols(file)
++        except Exception:
++            continue
++        for sym in symbols:
++            # Read exact slice for embedding for better focus
++            try:
++                data = file.read_bytes()
++                snippet = data[sym.start_byte : sym.end_byte].decode("utf-8", errors="ignore")
++            except Exception:
++                snippet = sym.preview
++            vec = hashing_vectorize(snippet, dim=dim)
++            vectors.append(vec)
++            meta_items.append(
++                MetaItem(
++                    id=next_id,
++                    file=str(sym.file),
++                    kind=sym.kind,
++                    name=sym.name,
++                    start_byte=sym.start_byte,
++                    end_byte=sym.end_byte,
++                    preview=sym.preview,
++                )
++            )
++            next_id += 1
++
++    if not vectors:
++        # Empty project: still write an empty index to keep tooling happy
++        xb = np.zeros((0, dim), dtype=np.float32)
++    else:
++        xb = np.vstack(vectors).astype(np.float32)
++
++    index = faiss.IndexFlatIP(dim)  # vectors are L2-normalized, IP == cosine
++    if xb.shape[0] > 0:
++        index.add(xb)
++
++    faiss.write_index(index, str(out / "index.faiss"))
++    with (out / "meta.json").open("w", encoding="utf-8") as f:
++        json.dump(
++            asdict(IndexMeta(dim=dim, items=meta_items)),
++            f,
++            ensure_ascii=False,
++            indent=2,
++        )
++    return out
++
++
++def _load(out_dir: str | Path) -> Tuple[faiss.Index, IndexMeta]:
++    out = Path(out_dir)
++    index = faiss.read_index(str(out / "index.faiss"))
++    meta_raw = json.loads((out / "meta.json").read_text(encoding="utf-8"))
++    items = [MetaItem(**mi) for mi in meta_raw["items"]]
++    meta = IndexMeta(dim=meta_raw["dim"], items=items, version=meta_raw.get("version", "1.0"))
++    return index, meta
++
++
++def query_index(
++    index_dir: str | Path,
++    query: str,
++    *,
++    k: int = 5,
++) -> List[Dict[str, str]]:
++    """
++    Search the index with a text query; returns top-k hits with lightweight info.
++    """
++    index, meta = _load(index_dir)
++    qv = hashing_vectorize(query, dim=meta.dim).reshape(1, -1).astype(np.float32)
++    if index.ntotal == 0:
++        return []
++    D, I = index.search(qv, k)
++    results: List[Dict[str, str]] = []
++    for dist, idx in zip(D[0].tolist(), I[0].tolist()):
++        if idx < 0 or idx >= len(meta.items):
++            continue
++        it = meta.items[idx]
++        results.append(
++            {
++                "score": f"{float(dist):.4f}",
++                "file": it.file,
++                "symbol": f"{it.kind} {it.name}",
++                "preview": it.preview.replace("\n", " ")[:200],
++            }
++        )
++    return results
+diff --git a/src/hindex/cli.py b/src/hindex/cli.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/hindex/cli.py
+@@ -0,0 +1,128 @@
++from __future__ import annotations
++
++import argparse
++import json
++import sys
++from pathlib import Path
++from typing import List
++
++from .indexer import build_index, query_index
++
++
++def _default_from_pyproject() -> tuple[int, list[str]]:
++    dim = 768
++    globs = ["**/*.py"]
++    try:
++        import tomllib  # py3.11+
++        data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
++        cfg = data.get("tool", {}).get("hindex", {})
++        dim = int(cfg.get("dim", dim))
++        globs = list(cfg.get("file_globs", globs))
++    except Exception:
++        pass
++    return dim, globs
++
++
++def cmd_ingest(args: argparse.Namespace) -> int:
++    dim, globs = _default_from_pyproject()
++    if args.dim is not None:
++        dim = int(args.dim)
++    if args.file_glob:
++        globs = args.file_glob
++    out = build_index(args.project, args.out, dim=dim, file_globs=globs)
++    print(f"[hindex] index written to: {out}")
++    return 0
++
++
++def cmd_query(args: argparse.Namespace) -> int:
++    hits = query_index(args.index, args.q, k=args.k)
++    if args.jsonl:
++        for h in hits:
++            print(json.dumps(h, ensure_ascii=False))
++    else:
++        if not hits:
++            print("[hindex] no results.")
++        for i, h in enumerate(hits, 1):
++            print(f"{i:>2}. {h['score']}  {h['symbol']}  —  {h['file']}")
++            print(f"    {h['preview']}")
++    return 0
++
++
++def main(argv: list[str] | None = None) -> int:
++    p = argparse.ArgumentParser(prog="hindex", description="hybrid index (tree-sitter + FAISS)")
++    sub = p.add_subparsers(dest="cmd", required=True)
++
++    p_ing = sub.add_parser("ingest", help="build index from project")
++    p_ing.add_argument("--project", type=str, default=".", help="project root path")
++    p_ing.add_argument("--out", type=str, default=".hindex", help="output index directory")
++    p_ing.add_argument("--dim", type=int, default=None, help="embedding dimension (overrides pyproject)")
++    p_ing.add_argument("--file-glob", type=str, action="append", help="file glob(s) (overrides pyproject)")
++    p_ing.set_defaults(func=cmd_ingest)
++
++    p_q = sub.add_parser("query", help="query an existing index")
++    p_q.add_argument("--index", type=str, default=".hindex", help="index directory")
++    p_q.add_argument("--q", type=str, required=True, help="free text query")
++    p_q.add_argument("--k", type=int, default=5, help="top-k")
++    p_q.add_argument("--jsonl", action="store_true", help="output JSONL")
++    p_q.set_defaults(func=cmd_query)
++
++    args = p.parse_args(argv)
++    return int(args.func(args))
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/tests/test_hindex_smoke.py b/tests/test_hindex_smoke.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/tests/test_hindex_smoke.py
+@@ -0,0 +1,66 @@
++from __future__ import annotations
++
++from pathlib import Path
++from textwrap import dedent
++
++from hindex.indexer import build_index, query_index
++
++
++def _sample_repo(tmp: Path) -> None:
++    (tmp / "pkg").mkdir(parents=True, exist_ok=True)
++    (tmp / "pkg" / "__init__.py").write_text("", encoding="utf-8")
++    (tmp / "pkg" / "util.py").write_text(
++        dedent(
++            """
++            import http.client
++
++            class Greeter:
++                def __init__(self, name: str) -> None:
++                    self.name = name
++
++                def hello(self) -> str:
++                    return f"Hello {self.name}"
++
++            def retry_http_get(host: str, path: str, attempts: int = 3) -> bytes:
++                for _ in range(attempts):
++                    conn = http.client.HTTPSConnection(host, timeout=5)
++                    conn.request("GET", path)
++                    r = conn.getresponse()
++                    if r.status == 200:
++                        return r.read()
++                raise RuntimeError("failed")
++            """
++        ).strip(),
++        encoding="utf-8",
++    )
++
++
++def test_build_and_query(tmp_path):
++    _sample_repo(tmp_path)
++    out = tmp_path / ".hindex"
++    build_index(tmp_path, out, dim=128, file_globs=("**/*.py",))
++
++    hits = query_index(out, "http client retry logic", k=3)
++    assert isinstance(hits, list)
++    assert len(hits) >= 1
++    # Top-1 or any hit should include util.py
++    assert any("util.py" in h["file"] for h in hits)

@@ -1,0 +1,31 @@
+[project]
+name = "cursor-personal-base"
+version = "0.1.0"
+description = "Base propre pour sessions de code (lint/format/tests)"
+requires-python = ">=3.10"
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+fix = true
+exclude = ["venv", ".venv"]
+
+[tool.ruff.lint]
+select = ["E","F","I","B","UP"]
+ignore = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"
+
+[project.scripts]
+hindex = "hindex.cli:main"
+
+[tool.hindex]
+dim = 768
+file_globs = ["**/*.py"]
