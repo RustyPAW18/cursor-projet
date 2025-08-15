@@ -6,6 +6,9 @@ on:
   workflow_dispatch:
   push:
   pull_request:
+  workflow_dispatch:
+  push:
+  pull_request:
 
 jobs:
   test:
@@ -29,17 +32,18 @@ jobs:
           $PSVersionTable.PSVersion
           python -V
           pip -V
-          python - << 'PY'
-          import sys, platform
-          print("sys.version:", sys.version.replace("\n"," "))
-          print("platform:", platform.platform())
-          try:
-              import numpy, pytest
-              print("numpy:", numpy.__version__)
-              print("pytest:", pytest.__version__)
-          except Exception as e:
-              print("deps check:", type(e).__name__, e)
-          PY
+          $code = @'
+import sys, platform
+print("sys.version:", sys.version.replace("\n"," "))
+print("platform:", platform.platform())
+try:
+    import numpy, pytest
+    print("numpy:", numpy.__version__)
+    print("pytest:", pytest.__version__)
+except Exception as e:
+    print("deps check:", type(e).__name__, e)
+'@
+          $code | python -
 
       - name: Install dev deps
         shell: pwsh
