@@ -81,3 +81,5 @@ Mini outillage pour tester `extract_symbols` et gÃ©nÃ©rer un rapport de symb
 .\.venv\Scripts\python.exe -m pip install numpy pytest ruff
 
 
+
+

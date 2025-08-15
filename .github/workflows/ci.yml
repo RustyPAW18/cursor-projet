@@ -15,8 +15,31 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements-dev.txt
+            pyproject.toml
+
+      - name: Show env
+        shell: pwsh
+        run: |
+          $PSVersionTable.PSVersion
+          python -V
+          pip -V
+          python - << 'PY'
+          import sys, platform
+          print("sys.version:", sys.version.replace("\n"," "))
+          print("platform:", platform.platform())
+          try:
+              import numpy, pytest
+              print("numpy:", numpy.__version__)
+              print("pytest:", pytest.__version__)
+          except Exception as e:
+              print("deps check:", type(e).__name__, e)
+          PY
 
       - name: Install dev deps
+        shell: pwsh
         run: |
           python -m pip install -U pip
           if (Test-Path "requirements-dev.txt") {
@@ -24,7 +47,7 @@ jobs:
           } else {
             python -m pip install pytest ruff numpy
           }
-        shell: pwsh
 
       - name: Run orchestrator (lint → tests → scan)
+        shell: pwsh
         run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_all.ps1
