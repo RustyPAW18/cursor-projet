@@ -1,25 +1,53 @@
-name: CI
+﻿name: CI
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  test:
+    runs-on: windows-latest
+    env:
+      # Mets "1" si tu veux bypass lint+mypy temporairement
+      SKIP_LINT_TYPES: "0"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-            python-version: '3.11'
-      - name: Install Poetry
-        run: pipx install poetry
-      - name: Install deps
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements-dev.txt
+            pyproject.toml
+            .ruff.toml
+            mypy.ini
+
+      - name: Install dev deps
+        shell: pwsh
         run: |
-          poetry install --no-interaction
-      - name: Lint (ruff)
-        run: poetry run ruff check .
-      - name: Format check (black)
-        run: poetry run black --check .
-      - name: Tests
-        run: poetry run pytest -q
+          python -m pip install -U pip
+          if (Test-Path "requirements-dev.txt") {
+            python -m pip install -r requirements-dev.txt
+          } else {
+            python -m pip install pytest ruff numpy mypy
+          }
+
+      - name: Run orchestrator (lint → types → tests → scan)
+        shell: pwsh
+        run: ./scripts/run_all.ps1
+
+      - name: Upload hindex reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hindex-reports
+          path: .hindex/*
+          if-no-files-found: ignore

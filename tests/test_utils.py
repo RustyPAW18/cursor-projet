@@ -1,4 +1,3 @@
-import pytest
 from cursor_personal.utils import add_numbers
 
 def test_add_numbers():

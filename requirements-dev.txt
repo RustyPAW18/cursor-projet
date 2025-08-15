@@ -1,0 +1,6 @@
+﻿pytest>=8.4
+ruff>=0.6
+black>=24.10
+isort>=5.13
+mypy>=1.11
+numpy>=2.3

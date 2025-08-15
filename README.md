@@ -1,17 +1,19 @@
-# Cursor perso — Base propre (v1)
+﻿![CI](https://github.com/RustyPAW18/cursor-projet/actions/workflows/ci.yml/badge.svg)
 
-Ce pack crée une base **saine et minimale** pour nos sessions de code avec le squelette méthodologique.
+# Cursor perso â€” Base propre (v1)
+
+Ce pack crÃ©e une base **saine et minimale** pour nos sessions de code avec le squelette mÃ©thodologique.
 
 ## Objectifs
-- Baseline immuable + périmètre réduit
-- Orchestrateur simple: *lint → format → tests*
-- Checklists avant/après patch
+- Baseline immuable + pÃ©rimÃ¨tre rÃ©duit
+- Orchestrateur simple: *lint â†’ format â†’ tests*
+- Checklists avant/aprÃ¨s patch
 - CHANGELOG pour tracer chaque session
 
 ## Installation rapide (Windows)
-1. Dézippez ce dossier où vous voulez (ex: `C:\Users\Verca\Cursor`).
+1. DÃ©zippez ce dossier oÃ¹ vous voulez (ex: `C:\Users\Verca\Cursor`).
 2. Ouvrez **PowerShell** dans le dossier.
-3. Exécutez :  
+3. ExÃ©cutez :  
    ```powershell
    .\scripts\reset_setup_cursor_perso.ps1
    ```
@@ -24,41 +26,62 @@ Ce pack crée une base **saine et minimale** pour nos sessions de code avec le s
 ## Arborescence
 ```
 .
-├─ src\cursor_personal\example.py
-├─ tests\test_example.py
-├─ scripts\*.ps1 / *.bat
-├─ pyproject.toml
-├─ requirements.txt
-├─ CHANGELOG.md
-└─ README.md
+â”œâ”€ src\cursor_personal\example.py
+â”œâ”€ tests\test_example.py
+â”œâ”€ scripts\*.ps1 / *.bat
+â”œâ”€ pyproject.toml
+â”œâ”€ requirements.txt
+â”œâ”€ CHANGELOG.md
+â””â”€ README.md
 ```
 
-## Squelette méthodologique (résumé)
-- **Cadre** : baseline immuable, patchs minimaux, logs explicites, I/O séparées.
-- **Rituel d’ouverture** : but unique, définition de fini, sauvegarde baseline.
-- **Checklists** : avant/après patch + DoD.
-- **Stop rules** : au-delà de 4–5 correctifs → **reset propre** dans un nouveau chat.
+## Squelette mÃ©thodologique (rÃ©sumÃ©)
+- **Cadre** : baseline immuable, patchs minimaux, logs explicites, I/O sÃ©parÃ©es.
+- **Rituel dâ€™ouverture** : but unique, dÃ©finition de fini, sauvegarde baseline.
+- **Checklists** : avant/aprÃ¨s patch + DoD.
+- **Stop rules** : au-delÃ  de 4â€“5 correctifs â†’ **reset propre** dans un nouveau chat.
 
-Voir `docs/squelette.md` pour la version complète.
+Voir `docs/squelette.md` pour la version complÃ¨te.
 ## Index hybride minimal (v1.2)
-- FAISS + embedding hashing déterministe (offline)
+- FAISS + embedding hashing dÃ©terministe (offline)
 - Segmentation symboles via tree-sitter (fallback safe si indispo)
 - CLI :
   - Ingestion : `hindex ingest --project . --out .hindex`
-  - Requête  : `hindex query --index .hindex --q "..." --k 5`
+  - RequÃªte  : `hindex query --index .hindex --q "..." --k 5`
 - Config : `[tool.hindex]` dans `pyproject.toml` (dim, globs)
 
 
-## 🚀 Runner unique (multiplateforme)
+## ðŸš€ Runner unique (multiplateforme)
 
-Au lieu d'utiliser des scripts `*.ps1` / `*.bat`, utilisez désormais :
+Au lieu d'utiliser des scripts `*.ps1` / `*.bat`, utilisez dÃ©sormais :
 
 ```bash
 python run.py doctor   # affiche les chemins d'outils & PYTHONPATH
 python run.py lint     # ruff check src tests
 python run.py format   # black src tests
 python run.py test     # pytest
-python run.py all      # lint → format → test
+python run.py all      # lint â†’ format â†’ test
 ```
 
-> Le script détecte automatiquement le `.venv` (Windows / Linux / macOS) et force `PYTHONPATH=src` pour le layout source.
+> Le script dÃ©tecte automatiquement le `.venv` (Windows / Linux / macOS) et force `PYTHONPATH=src` pour le layout source.
+
+# Cursor perso â€” hindex (scan & tests)
+
+Mini outillage pour tester `extract_symbols` et gÃ©nÃ©rer un rapport de symboles sur tout `src/`.
+
+## PrÃ©requis
+- Windows + PowerShell
+- Python 3.12+ (tests validÃ©s en 3.13)
+- Environnement virtuel `.venv` activÃ©/reconnu par les scripts
+- (pour tests `indexer`) `numpy` installÃ© dans le venv
+
+```powershell
+# (facultatif) DÃ©pendances dev
+.\.venv\Scripts\python.exe -m pip install -U pip
+.\.venv\Scripts\python.exe -m pip install numpy pytest ruff
+
+
+
+
+
+[ci] retrigger 2025-08-15T10:15:00
