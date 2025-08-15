@@ -1,14 +1,9 @@
-name: CI
+﻿name: CI
 
 on:
   push:
   pull_request:
   workflow_dispatch:
-  push:
-  pull_request:
-  workflow_dispatch:
-  push:
-  pull_request:
 
 jobs:
   test:
@@ -26,25 +21,6 @@ jobs:
             requirements-dev.txt
             pyproject.toml
 
-      - name: Show env
-        shell: pwsh
-        run: |
-          $PSVersionTable.PSVersion
-          python -V
-          pip -V
-          $code = @'
-import sys, platform
-print("sys.version:", sys.version.replace("\n"," "))
-print("platform:", platform.platform())
-try:
-    import numpy, pytest
-    print("numpy:", numpy.__version__)
-    print("pytest:", pytest.__version__)
-except Exception as e:
-    print("deps check:", type(e).__name__, e)
-'@
-          $code | python -
-
       - name: Install dev deps
         shell: pwsh
         run: |
@@ -55,6 +31,6 @@ except Exception as e:
             python -m pip install pytest ruff numpy
           }
 
-      - name: Run orchestrator (lint ? tests ? scan)
+      - name: Run orchestrator (lint → tests → scan)
         shell: pwsh
         run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_all.ps1
