@@ -83,3 +83,5 @@ Mini outillage pour tester `extract_symbols` et gÃ©nÃ©rer un rapport de symb
 
 
 
+
+[ci] retrigger 2025-08-15T10:15:00
