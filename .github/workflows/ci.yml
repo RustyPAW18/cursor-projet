@@ -1,6 +1,9 @@
-﻿name: CI
+name: CI
 
 on:
+  push:
+  pull_request:
+  workflow_dispatch:
   push:
   pull_request:
 
@@ -48,6 +51,6 @@ jobs:
             python -m pip install pytest ruff numpy
           }
 
-      - name: Run orchestrator (lint → tests → scan)
+      - name: Run orchestrator (lint ? tests ? scan)
         shell: pwsh
         run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_all.ps1
