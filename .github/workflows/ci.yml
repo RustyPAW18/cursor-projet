@@ -1,25 +1,30 @@
-name: CI
+﻿name: CI
 
 on:
   push:
   pull_request:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  test:
+    runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-            python-version: '3.11'
-      - name: Install Poetry
-        run: pipx install poetry
-      - name: Install deps
+          python-version: "3.13"
+
+      - name: Install dev deps
         run: |
-          poetry install --no-interaction
-      - name: Lint (ruff)
-        run: poetry run ruff check .
-      - name: Format check (black)
-        run: poetry run black --check .
-      - name: Tests
-        run: poetry run pytest -q
+          python -m pip install -U pip
+          if (Test-Path "requirements-dev.txt") {
+            python -m pip install -r requirements-dev.txt
+          } else {
+            python -m pip install pytest ruff numpy
+          }
+        shell: pwsh
+
+      - name: Run orchestrator (lint → tests → scan)
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_all.ps1
