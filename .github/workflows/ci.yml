@@ -5,9 +5,16 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: windows-latest
+    env:
+      # Mets "1" si tu veux bypass lint+mypy temporairement
+      SKIP_LINT_TYPES: "0"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,6 +27,8 @@ jobs:
           cache-dependency-path: |
             requirements-dev.txt
             pyproject.toml
+            .ruff.toml
+            mypy.ini
 
       - name: Install dev deps
         shell: pwsh
@@ -28,9 +37,17 @@ jobs:
           if (Test-Path "requirements-dev.txt") {
             python -m pip install -r requirements-dev.txt
           } else {
-            python -m pip install pytest ruff numpy
+            python -m pip install pytest ruff numpy mypy
           }
 
-      - name: Run orchestrator (lint → tests → scan)
+      - name: Run orchestrator (lint → types → tests → scan)
         shell: pwsh
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_all.ps1
+        run: ./scripts/run_all.ps1
+
+      - name: Upload hindex reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hindex-reports
+          path: .hindex/*
+          if-no-files-found: ignore
